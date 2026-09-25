@@ -1,0 +1,23 @@
+# ── Core ──
+streamlit>=1.32.0
+python-dotenv>=1.0.0
+
+# ── LangChain Ecosystem ──
+langchain>=0.3.0
+langchain-community>=0.3.0
+langchain-huggingface>=0.1.0
+langchain-groq>=0.2.0
+langchain-text-splitters>=0.3.0
+
+# ── Vector Store ──
+chromadb>=0.5.0
+
+# ── Document Loaders ──
+pypdf>=4.0.0
+youtube-transcript-api>=0.6.0
+
+# ── Embeddings & Reranking ──
+sentence-transformers>=3.0.0
+
+# ── Hybrid Search (BM25) ──
+rank_bm25>=0.2.2
