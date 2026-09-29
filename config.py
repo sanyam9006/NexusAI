@@ -12,7 +12,11 @@ Performance tiers (set via EMBEDDING_MODEL env var):
 
 import os
 from dataclasses import dataclass, field
+import certifi
 from dotenv import load_dotenv
+
+# Ensure SSL root certificates are found across all platforms (notably macOS)
+os.environ.setdefault("SSL_CERT_FILE", certifi.where())
 
 load_dotenv()
 
