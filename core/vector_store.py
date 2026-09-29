@@ -1,13 +1,13 @@
 """
 ChromaDB vector store lifecycle management.
 
-Handles creation, clearing, and document extraction.  Each "Sync"
-wipes the old store to prevent data contamination from prior sessions.
+Handles creation, clearing, and document extraction. Each "Sync"
+resets the collection to prevent data contamination from prior sessions
+without unlinking active SQLite database files from disk while open.
 """
 
 import os
-import shutil
-
+import chromadb
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
 
@@ -17,19 +17,22 @@ from utils.logger import setup_logger
 
 logger = setup_logger("nexus.vectorstore")
 
+COLLECTION_NAME = "nexus_research"
+
 
 class VectorStoreManager:
-    """Manages the ChromaDB vector store on disk."""
+    """Manages the ChromaDB vector store lifecycle."""
 
     def __init__(self, persist_dir: str = config.PERSIST_DIR):
         self.persist_dir = persist_dir
         self.embeddings = get_embedding_model()
+        self.client = chromadb.PersistentClient(path=self.persist_dir)
 
     def create(self, chunks: list[Document]) -> Chroma:
         """Build a fresh vector store from document chunks.
 
-        Any existing data at ``persist_dir`` is wiped first to ensure
-        a clean index without stale documents from prior sessions.
+        The existing collection is deleted and recreated via Chroma's client API,
+        avoiding file-system race conditions or locked SQLite database handles.
 
         Args:
             chunks: Pre-processed and deduplicated document chunks.
@@ -37,29 +40,37 @@ class VectorStoreManager:
         Returns:
             A Chroma vector store ready for retrieval.
         """
-        # Wipe existing data to prevent contamination
-        if os.path.exists(self.persist_dir):
-            shutil.rmtree(self.persist_dir)
-            logger.info("Cleared stale vector store at %s", self.persist_dir)
+        try:
+            self.client.delete_collection(COLLECTION_NAME)
+            logger.info("Cleared previous collection '%s'", COLLECTION_NAME)
+        except Exception:
+            # Collection may not exist yet on first run
+            pass
 
-        store = Chroma.from_documents(
-            documents=chunks,
-            embedding=self.embeddings,
-            persist_directory=self.persist_dir,
+        store = Chroma(
+            client=self.client,
+            collection_name=COLLECTION_NAME,
+            embedding_function=self.embeddings,
             collection_metadata={"hnsw:space": "cosine"},
         )
 
+        if chunks:
+            store.add_documents(chunks)
+
         logger.info(
             "Vector store created: %d chunks at %s",
-            len(chunks), self.persist_dir,
+            len(chunks),
+            self.persist_dir,
         )
         return store
 
     def clear(self) -> None:
-        """Delete the vector store from disk entirely."""
-        if os.path.exists(self.persist_dir):
-            shutil.rmtree(self.persist_dir)
-            logger.info("Deleted vector store at %s", self.persist_dir)
+        """Clear the collection from the vector store."""
+        try:
+            self.client.delete_collection(COLLECTION_NAME)
+            logger.info("Deleted collection '%s' from %s", COLLECTION_NAME, self.persist_dir)
+        except Exception as e:
+            logger.warning("Could not clear vector store collection: %s", e)
 
     def get_all_documents(self, store: Chroma) -> list[Document]:
         """Extract all documents from a Chroma store.
@@ -86,3 +97,4 @@ class VectorStoreManager:
             len(docs),
         )
         return docs
+
